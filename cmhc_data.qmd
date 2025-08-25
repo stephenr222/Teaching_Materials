@@ -1,0 +1,203 @@
+---
+title: "Housing data: quirks, pitfalls and the residential rental market"
+author: "Stephen Rouse"
+format: revealjs
+editor: visual
+fontsize: 18pt
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+---
+
+# CANSIM Housing & Economic data
+
+::::: columns
+::: {.column width="60%"}
+The `CANSIM` package we worked with earlier has some useful data:
+
+-   Building permits (monthly at metro level, annually at municipal level)
+-   New Housing Prices (monthly by CMA)
+-   Demographic data (population estimates, population change, migration)
+-   Labour market data (employment, unemployment, wages)
+-   General macroeconomic data
+:::
+
+::: {.column width="40%"}
+![cansim](https://raw.githubusercontent.com/mountainMath/cansim/master/images/cansim-sticker.png)
+:::
+:::::
+
+## CANSIM - Housing Datasets
+
+```{r}
+library(cansim)
+search_cansim_tables("housing")  %>% select(cansim_table_number,title,archived) %>%  knitr::kable()
+
+```
+
+## Taking a Look at New Housing Prices
+
+```{r}
+nhpi_data <- get_cansim("18-10-0205")
+```
+
+Breaking the data down into a workable size:
+
+```{r}
+nhpi_data <- nhpi_data %>% filter(Date >="2016-12-01")
+
+nhpi_data <- nhpi_data %>% mutate(CMA= ifelse(grepl(",",GEO),sub(",.*","",GEO),"N/A")) %>% filter(CMA %in% c("Calgary","Edmonton","Montreal","Toronto","Vancouver"))
+nhpi_data <- nhpi_data[,c(2,22,6,7)]
+
+nhpi_data %>% knitr::kable()
+```
+
+## Graphing this Data over time
+
+```{r}
+nhpi_data %>% filter(`New housing price indexes`=="House only") %>% ggplot(aes(x=Date,y=VALUE,colour=CMA,linetype=CMA))+ geom_smooth()+ labs(title="New Home Prices",x=NULL,y="Housing Prices")
+```
+
+# CMHC Overview
+
+CMHC generates and shares of interesting data, but also has lots of quirks and pitfalls. Relevant to the residential rental market:
+
+::::: columns
+::: {.column width="50%"}
+**Rental Market Survey (RMS)**
+
+-   Rental universe
+-   Vacancy rates
+-   Average and median rents
+-   Fixed sample rent change
+-   Rent quartiles
+-   Rent of units turned over in the last 12 months
+:::
+
+::: {.column width="50%"}
+**Secondary Rental Market Survey (SRMS) (Metro area only)**
+
+-   Condo apartment units used for rental
+-   Condo apartment average rents
+-   Condo apartment vacancy rate
+
+**Seniors Rental Housing (Metro area only)**
+
+-   Universe
+-   Vacancy rate
+:::
+:::::
+
+Most RMS data available by different geographic granularity, structure size, structure type, building age, and bedrooms.
+
+## Data on New Housing
+
+**Starts and Completions Survey (SCSS)**
+
+-   Housing starts (urban areas)
+-   Housing Completions (metro areas)
+-   Under construction inventory (metro areas)
+-   Length of construction
+
+Can slice by intended *market* (rental, ownership, condo, co-op) and *dwelling type* (single, semi, row, apartment), geography (census tract, neighborhood, survey zone, municipality, Metro area).
+
+**Intended market rental is not the same thing as purpose-built rental.** Might contain student housing if units are self-contained. Might contain senior housing. Projects might change "intention" mid-way.
+
+## Data access
+
+::::: columns
+::: {.column width="60%"}
+CMHC has a wealth of housing data, the [`cmhc` R package](https://mountainmath.github.io/cmhc/) interfaces with the CMHC Housing Market Information Portal (HMIP) to provide programmatic and reproducible access to housing data.
+
+The functionality is limited because fo the design of the HMIP, which is more of a web interface than a data portal. The package has an interactive query builder `select_cmhc_table()` that can be run the console to help build queries for CMHC data.
+
+Some data tables are only available as spreadsheets.
+:::
+
+::: {.column width="40%"}
+<img src="https://raw.githubusercontent.com/mountainMath/cmhc/master/images/cmhc-sticker.png" alt="cmhc"/>
+:::
+:::::
+
+## Working with CMHC data
+
+For the CMHC package, everything starts with the select_cmhc_table() function. You can just pick which data you want based off the prompts it gives you, and then it'll return the code you need to use:
+
+```{r}
+library(tidyverse)
+library(cmhc)
+
+rms_data_edmonton <- get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", 
+         breakdown = "Historical Time Periods", geo_uid = "4811061")
+rms_data_edmonton %>% knitr::kable()
+```
+
+## Finding CMHC Geographies
+
+The tricky part with CMHC data is that it uses different geographic identifiers to label some regions. That might not matter for some of the datasets you're interested in, but the RMS code we ran above wouldn't have worked unless we knew which code ("geo_uid") to use for Edmonton.
+
+To find a certain geography for CMHC, this coding package stores a helpful dataset:
+
+```{r}
+search <- cmhc_ct_translation_data
+```
+
+You can just open up this table in R Studio & type in what you're looking for:
+
+![](images/geo_search.png)
+
+## Graphing the RMS Data
+
+```{r}
+get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", 
+         breakdown = "Historical Time Periods", geo_uid = "4811061") |>
+  filter(`Bedroom Type` != "Total") |>
+  ggplot(aes(x=Date,y=Value,fill=`Bedroom Type`)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels=scales::comma) +
+  labs(title="Edmonton rental universe",x=NULL,y="Number of units",caption="Data: CMHC RMS")
+```
+
+## Quirks with CMHC Data
+
+### Rental Housing Starts or Completions
+
+-   *single* (dwelling type) rental starts tend to be things like laneway homes.
+-   Secondary suits in new houses get classified as *rental apartment* units.
+-   Non-market housing can show up as rental starts or completions.
+-   Student or Senior housing can show up as rental starts or completions if units are self-contained.
+-   Geo-coding issues mean that starts and completions will not always show up in the correct census tract.
+
+### Rental Market Survey (RMS)
+
+-   Poor location control, aggregating data from small to larger geographies is weighted by sample size not rental universe size.
+-   Rents of vacant units and rents of turnover units can be difficult to interpret as vacant or turnover units aren't necessarily comparable to the overall stock. (Be aware of case-control bias.)
+-   At small geographies vacancy rate can spike when a new building is not leased up yet or owners are decanting buildings slated for demolition or sale.
+
+More data quirks on other aspects of CMHC data, and how it squares up with other data sources like the census, are documented [here](https://doodles.mountainmath.ca/blog/2022/06/12/ins-and-outs-of-cmhc-data/).
+
+## Making data comparable over time
+
+::::: columns
+::: {.column width="60%"}
+One common problems with doing analysis with (Canadian) geographic data is that geographies aren't stable over time. **In the context of CMHC data this comes up for Census Tracts.** There are three ways to deal this this problem:
+
+1.  Order a custom tabulation on a constant geography of choice. Best solution, but not always possible. And if possible (e.g. Census data) it costs time and money.
+2.  Estimate data on a fixed geography, e.g. areal or more refined methods like asymmetric approximation. Fine for gimmicky purposes, but not suited for analysis. Very hard to do this without introducing bias.
+3.  [**tongfen**](https://mountainmath.github.io/cmhc/): Create a semi-custom tabulation of the data on a slightly coarser least common denominator geography.
+:::
+
+::: {.column width="40%"}
+![tongfen](https://raw.githubusercontent.com/mountainMath/tongfen/master/images/tongfen-sticker.png){alt="tongfen"}
+:::
+:::::
+
+# Conclusion
+
+-   Lots of data available from CMHC, but it's not always easy to work with.
+
+-   Reproducible and adaptable workflows allow to successively refine and improve analysis.
+
+-   Contextual information like the census and other StatCan data tables (building permits, labour market data, demographic data, ...) can help expand analysis and make results more robust.

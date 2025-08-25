@@ -48,8 +48,10 @@ Breaking the data down into a workable size:
 ```{r}
 nhpi_data <- nhpi_data %>% filter(Date >="2016-12-01")
 
-nhpi_data <- nhpi_data %>% mutate(CMA= ifelse(grepl(",",GEO),sub(",.*","",GEO),"N/A")) %>% filter(CMA %in% c("Calgary","Edmonton","Montreal","Toronto","Vancouver"))
+nhpi_data <- nhpi_data %>% mutate(CMA= ifelse(grepl(",",GEO),sub(",.*","",GEO),"N/A")) %>% filter(CMA %in% c("Vancouver","Ottawa-Gatineau","Victoria"))
+
 nhpi_data <- nhpi_data[,c(2,22,6,7)]
+
 
 nhpi_data %>% knitr::kable()
 ```
@@ -57,7 +59,12 @@ nhpi_data %>% knitr::kable()
 ## Graphing this Data over time
 
 ```{r}
-nhpi_data %>% filter(`New housing price indexes`=="House only") %>% ggplot(aes(x=Date,y=VALUE,colour=CMA,linetype=CMA))+ geom_smooth()+ labs(title="New Home Prices",x=NULL,y="Housing Prices")
+nhpi_data %>% filter(`New housing price indexes`=="House only") %>%
+ggplot(aes(x=Date,y=VALUE,colour=CMA,linetype=CMA)) + geom_smooth()+ labs(title="New Home Prices",x=NULL,y="Housing Prices") + theme_bw()
+
+nhpi_data %>% filter(CMA=="Edmonton") %>%
+ggplot(aes(x=Date,y=VALUE,colour=`New housing price indexes`,linetype=`New housing price indexes`))+ geom_smooth()+ labs(title="New Home Prices",x=NULL,y="Housing Prices")
+
 ```
 
 # CMHC Overview
@@ -129,6 +136,8 @@ For the CMHC package, everything starts with the select_cmhc_table() function. Y
 library(tidyverse)
 library(cmhc)
 
+select_cmhc_table()
+
 rms_data_edmonton <- get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", 
          breakdown = "Historical Time Periods", geo_uid = "4811061")
 rms_data_edmonton %>% knitr::kable()
@@ -142,6 +151,12 @@ To find a certain geography for CMHC, this coding package stores a helpful datas
 
 ```{r}
 search <- cmhc_ct_translation_data
+search_ct <- cmhc_cma_translation_data
+
+rms_data_edmonton <- get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", 
+         breakdown = "Historical Time Periods", geo_uid = "48835")
+rms_data_edmonton %>% knitr::kable()
+
 ```
 
 You can just open up this table in R Studio & type in what you're looking for:
@@ -151,13 +166,49 @@ You can just open up this table in R Studio & type in what you're looking for:
 ## Graphing the RMS Data
 
 ```{r}
-get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", 
-         breakdown = "Historical Time Periods", geo_uid = "4811061") |>
-  filter(`Bedroom Type` != "Total") |>
-  ggplot(aes(x=Date,y=Value,fill=`Bedroom Type`)) +
-  geom_bar(stat="identity") +
+get_cmhc(survey = "Rms", series = "Rental Universe", dimension = "Bedroom Type", breakdown = "Historical Time Periods", geo_uid = "4811061") |>
+  filter(`Bedroom Type` != "Total")|>
+  ggplot(aes(x=Date,y=Value,fill=`Bedroom Type`)) + geom_bar(stat="identity")+
+  scale_y_continuous(labels=scales::comma) +  labs(title="Edmonton rental universe",x=NULL,y="Number of units",caption="Data: CMHC RMS")
+```
+
+## Exploring CMHC Data
+
+```{r}
+under_construction <- get_cmhc(survey = "Scss", series = "Starts", dimension = "Dwelling Type", breakdown = "Historical Time Periods", geo_uid = 48835) 
+
+
+under_construction %>% ggplot(aes(x=Date,y=Value,colour=`Dwelling Type`))+  geom_smooth() +
   scale_y_continuous(labels=scales::comma) +
-  labs(title="Edmonton rental universe",x=NULL,y="Number of units",caption="Data: CMHC RMS")
+  labs(title="City of Edmonton dwelling units under construction",
+       x=NULL,y="Number of units", caption="CMHC Scss")
+```
+
+## Exploring CMHC Data 2
+
+```{r}
+select_cmhc_table()
+
+abbotsford_chn <- get_cmhc(survey = "Core Housing Need", series = "Housing Standards", dimension = "Households in Core Housing Need", breakdown = "Historical Time Periods", geo_uid = 5909052) 
+
+abbotsford_chn %>% ggplot(aes(x=Date,y=Value,colour=`Households in Core Housing Need`)) + geom_line()
+
+toronto_chn <- get_cmhc(survey = "Core Housing Need", series = "Housing Standards", dimension = "Households in Core Housing Need", breakdown = "Historical Time Periods", geo_uid = 35535) 
+
+toronto_chn %>% filter(!`Households in Core Housing Need` %in% c("Total","Above Standards")) %>% ggplot(aes(x=Date,y=Value,fill=`Households in Core Housing Need`)) + geom_bar(stat="identity")+
+  scale_y_continuous(labels=scales::comma)
+
+toronto_chn <- toronto_chn %>% mutate(CMA="Toronto")
+abbotsford_chn <- abbotsford_chn %>% mutate(CMA="Abbotsford")
+
+chn_total <- rbind(toronto_chn,abbotsford_chn)
+
+chn_total %>% filter(!`Households in Core Housing Need` %in% c("Total","Above Standards")) %>% ggplot(aes(x=Date,y=Value,fill=`Households in Core Housing Need`)) + geom_bar(stat="identity")+
+  scale_y_continuous(labels=scales::comma) + facet_wrap(~CMA,scales = "free_y")
+
+
+select_cmhc_table()
+tables <- cmhc::list_cmhc_tables()
 ```
 
 ## Quirks with CMHC Data
@@ -190,7 +241,7 @@ One common problems with doing analysis with (Canadian) geographic data is that 
 :::
 
 ::: {.column width="40%"}
-![tongfen](https://raw.githubusercontent.com/mountainMath/tongfen/master/images/tongfen-sticker.png){alt="tongfen"}
+![tongfen](https://raw.githubusercontent.com/mountainMath/tongfen/master/images/tongfen-sticker.png)
 :::
 :::::
 

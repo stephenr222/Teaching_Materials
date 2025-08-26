@@ -62,11 +62,7 @@ library(cansim)
 library(cancensus)
 library(tongfen)
 
-install.packages("sf")
-library(sf)
-
-set_cancensus_api_key("Census_mapper_1240815019385", install = TRUE) 
-show_cancensus_api_key()
+#set_cancensus_api_key("Census_mapper_1240815019385", install = TRUE) 
 ```
 
 This code is commented-out for now because you only need to run it once. When you get your API key, place it above and run that section of code without the \# sign. It should look something like this:
@@ -80,7 +76,7 @@ This will install the API key as a system variable in your `.Renviron` so that i
 This step will store any census data you grab locally, so that you don't have to keep re-downloading it every time. It's really helpful for speeding up code when you're working with bigger tables, especially ones that you use often.
 
 ```{r}
-set_cancensus_cache_path("~/Downloads",install=TRUE,overwrite = TRUE)
+#set_cancensus_cache_path("~/Econ/Cancensus Cache",install=TRUE,overwrite = TRUE)
 show_cancensus_cache_path()
 ```
 
@@ -219,7 +215,7 @@ The "exact" search is very precise, but you can miss out on key tables if you do
 One other search option is "keyword", which looks for the highest number of matches. It also has an interactive option that you can play around with:
 
 ```{r}
-find_census_vectors("Australian ethnic", dataset = "CA21", type = "total", query_type = "keyword", interactive = TRUE)
+find_census_vectors("Australian ethnic", dataset = "CA21", type = "total", query_type = "keyword", interactive = FALSE)
 ```
 
 ## Looking at Poverty in Edmonton 
@@ -237,7 +233,7 @@ pv <- c(lico_at="v_CA21_1028")
 
 poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT")
 
-ggplot(poverty_data,aes(fill=lico_at+lico_at_babies)) +
+ggplot(poverty_data,aes(fill=lico_at)) +
   geom_sf(size=NA) +  
   labs(title="Number of children in poverty - Edmonton",fill=NULL,caption="StatCan Census 2021")
 ```
@@ -333,6 +329,16 @@ With this example, we'll take a look at how the number of children in Toronto ha
 ```{r}
 search_census_regions("Toronto","CA21")
 
+census_data <- get_census(dataset='CA21', regions=list(CSD="3520005"), vectors=c("v_CA21_11"), labels="detailed", geo_format=NA, level='CSD')
+
+variables <- c(children_2021="v_CA21_11",
+                                     children1m_2001="v_CA01_7",
+                                     children2m_2001="v_CA01_8",
+                                     children3m_2001="v_CA01_9",
+                                     children1f_2001="v_CA01_26",
+                                     children2f_2001="v_CA01_27",
+                                     children3f_2001="v_CA01_28")
+
 # "meta" vectors for Tongfen are the Census vectors that we need to compare over time
 meta <- meta_for_ca_census_vectors(c(children_2021="v_CA21_11",
                                      children1m_2001="v_CA01_7",
@@ -408,16 +414,18 @@ find_census_vectors("# of families in low income",dataset="TX2004",query_type="s
 
 ```{r}
 years <- seq(2004,2018)
-variables <- setNames(c(paste0("v_TX",years,"_607"),paste0("v_TX",years,"_786")),c(paste0("families_",years),paste0("lico_",years)))
+
+variables <- setNames(c(paste0("v_TX",years,"_607"),              paste0("v_TX",years,"_786")),c(paste0("families_",years),paste0("lico_",years)))
 
 meta <-meta_for_ca_census_vectors(variables)
 
-low_income <- get_tongfen_ca_census(regions = list(CMA=59933), meta=meta, level="CT") %>%
+low_income <- get_tongfen_ca_census(regions = list(CMA=59933), meta=meta, level="CT") 
+
+low_income <- low_income %>%
   mutate(`2004-2018`=lico_2018/families_2018-lico_2004/families_2004,
          `2004-2011`=lico_2011/families_2011-lico_2004/families_2004,
          `2011-2018`=lico_2018/families_2018-lico_2011/families_2011)
 
-head(meta)
 ```
 
 ## Mapping the Graph
@@ -431,6 +439,7 @@ low_income_pivoted %>% sf::st_sf() %>%
   coord_sf(datum=NA,xlim=c(-123.25,-122.8),ylim=c(49.1,49.35)) +
   labs(title="Change in share of families in low income 2004-2018", fill=NULL,
        caption="T1FF F-20 family file")
+
 ```
 
 ## Example on your Own
@@ -444,3 +453,15 @@ Now that we've gone through a lot of examples, we'll have you all try out one on
 3.  Map the data. Choose the level of geographic detail you want with the `level="CT/CMA/etc."` code.
 
 4.  Good luck!
+
+## Extra Example of my Own:
+
+```{r}
+pv <- c(households="v_CA21_4237")
+
+census_data <- get_census("CA21", regions=list(CMA="59933"), vectors=pv, geo_format="sf", level="CT")
+
+ggplot(census_data,aes(fill=households)) +
+  geom_sf(size=NA) +  
+  labs(title="# of Households in Vancouver",fill=NULL,caption="StatCan Census 2021")+ scale_fill_viridis_c()
+```

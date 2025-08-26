@@ -55,15 +55,18 @@ The cancensus R package interfaces with the CensusMapper API server. It can be q
 A slight complication, the [`cancensus` package](https://mountainmath.github.io/cancensus/) needs an API key. You can sign up for one on [CensusMapper](https://censusmapper.ca/users/sign_up), and install it using the `set_api_key` function with the `install=TRUE` option so it's always available and won't expose your API key when sharing code.
 
 ```{r}
-# new_packages <- c("cancensus","tongfen")
-# install.packages(new_packages)
+#new_packages <- c("cancensus","tongfen")
+#install.packages(new_packages)
 library(tidyverse)
 library(cansim)
 library(cancensus)
 library(tongfen)
 
-#cancensus::set_api_key("<your own API key>", install = TRUE) 
-#show_cancensus_api_key()
+install.packages("sf")
+library(sf)
+
+set_cancensus_api_key("Census_mapper_1240815019385", install = TRUE) 
+show_cancensus_api_key()
 ```
 
 This code is commented-out for now because you only need to run it once. When you get your API key, place it above and run that section of code without the \# sign. It should look something like this:
@@ -77,7 +80,7 @@ This will install the API key as a system variable in your `.Renviron` so that i
 This step will store any census data you grab locally, so that you don't have to keep re-downloading it every time. It's really helpful for speeding up code when you're working with bigger tables, especially ones that you use often.
 
 ```{r}
-#set_cancensus_cache_path("~/Econ/Cancensus Cache",install=TRUE)
+set_cancensus_cache_path("~/Downloads",install=TRUE,overwrite = TRUE)
 show_cancensus_cache_path()
 ```
 
@@ -145,6 +148,7 @@ list_census_regions("CA21")
 ## Revisiting the code for Edmonton
 
 ```{r}
+library(cancensus)
 list_census_regions('CA21') %>% filter(level=="CMA", name=="Edmonton")
 
 census_data <- get_census(dataset='CA21', regions=list(CMA="48835"),
@@ -215,13 +219,13 @@ The "exact" search is very precise, but you can miss out on key tables if you do
 One other search option is "keyword", which looks for the highest number of matches. It also has an interactive option that you can play around with:
 
 ```{r}
-find_census_vectors("Australian ethnic", dataset = "CA21", type = "total", query_type = "keyword", interactive = FALSE)
+find_census_vectors("Australian ethnic", dataset = "CA21", type = "total", query_type = "keyword", interactive = TRUE)
 ```
 
 ## Looking at Poverty in Edmonton 
 
 ```{r}
-#list_census_regions('CA21') %>% filter(level=="CMA", name=="Edmonton")
+list_census_regions('CA21') %>% filter(level=="CMA", name=="Edmonton")
 
 find_census_vectors("Low Income Measures",dataset="CA21",type="total",query_type="semantic")  %>% knitr::kable()
 ```
@@ -230,8 +234,10 @@ find_census_vectors("Low Income Measures",dataset="CA21",type="total",query_type
 
 ```{r}
 pv <- c(lico_at="v_CA21_1028")
-poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT") 
-ggplot(poverty_data,aes(fill=lico_at)) +
+
+poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT")
+
+ggplot(poverty_data,aes(fill=lico_at+lico_at_babies)) +
   geom_sf(size=NA) +  
   labs(title="Number of children in poverty - Edmonton",fill=NULL,caption="StatCan Census 2021")
 ```
@@ -247,7 +253,9 @@ find_census_vectors("Low Income Measures %",dataset="CA21",type="total",query_ty
 
 ```{r}
 pv <- c(lico_at="v_CA21_1043")
-poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT") 
+
+poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT")
+
 ggplot(poverty_data,aes(fill=lico_at/100)) +
   geom_sf(size=NA) +  
   labs(title="Share of children in poverty - Edmonton",fill=NULL,caption="StatCan Census 2021")
@@ -261,6 +269,7 @@ list_census_regions('CA21') %>% filter(level=="CMA", name=="Vancouver")
 
 ```{r}
 poverty_data <- get_census("CA21", regions=list(CMA="59933"), vectors=pv, geo_format="sf", level="CT") 
+
 ggplot(poverty_data,aes(fill=lico_at/100)) +
   geom_sf(size=NA) +  
   labs(title="% of children in poverty - Vancouver",fill=NULL,caption="StatCan Census 2021")
@@ -274,7 +283,7 @@ If we want to add different themes to the graph, there are a lot of options to c
 poverty_data <- get_census("CA21", regions=list(CMA="59933"), vectors=pv, geo_format="sf", level="CT") 
 ggplot(poverty_data,aes(fill=lico_at/100)) +
   geom_sf(size=NA) +  
-  labs(title="% of children in poverty - Vancouver",fill=NULL,caption="StatCan Census 2021") +scale_fill_viridis_c(option = "inferno",,labels=scales::percent)
+  labs(title="% of children in poverty - Vancouver",fill=NULL,caption="StatCan Census 2021") +scale_fill_viridis_c(option = "inferno",labels=scales::percent)
 ```
 
 # Mixing data sources
@@ -292,11 +301,15 @@ The **cansim** package returns a geographic identifier `GeoUID` that matches cen
 We'll try out an example here with an Income Distribution measure from StatCan:
 
 ```{r}
+
 income_distribution <- get_cansim("11-10-0074") %>% select(GeoUID,`D-index`=VALUE)
+
+list_census_regions('CA16') %>% filter(level=="CMA", name=="Toronto")
 
 toronto <- get_census("CA16",regions=list(CMA="35535"),geo_format = 'sf',level="CT")
   
 merged_data <- left_join(toronto,income_distribution, by="GeoUID") 
+
 
 merged_data %>%
   ggplot(aes(fill=`D-index`)) +
@@ -370,6 +383,54 @@ ggplot(plot_data, aes(fill=children_2021/Population_CA21-children_2001/Populatio
   labs(title="City of Toronto change in share of children under 15 between 2001 to 2021",
        fill="Percentage\npoint\nchange",
        caption="StatCan Census 2001, 2021")
+```
+
+## TongFen with T1FF data - Advanced Example
+
+T1FF taxfiler data is a rich source of demographic information, now available for census tracts. Variable naming is consistent across years, making it possible to programmatically assemble data.
+
+```{r}
+library(stringr)
+list_census_datasets() %>% filter(str_detect(description,"T1FF"))
+```
+
+```{r}
+vectors_census_2004 <- list_census_vectors("TX2004")
+
+find_census_vectors("all families",dataset="TX2004",query_type="semantic") 
+```
+
+## Advanced Example (continued)
+
+```{r}
+find_census_vectors("# of families in low income",dataset="TX2004",query_type="semantic") 
+```
+
+```{r}
+years <- seq(2004,2018)
+variables <- setNames(c(paste0("v_TX",years,"_607"),paste0("v_TX",years,"_786")),c(paste0("families_",years),paste0("lico_",years)))
+
+meta <-meta_for_ca_census_vectors(variables)
+
+low_income <- get_tongfen_ca_census(regions = list(CMA=59933), meta=meta, level="CT") %>%
+  mutate(`2004-2018`=lico_2018/families_2018-lico_2004/families_2004,
+         `2004-2011`=lico_2011/families_2011-lico_2004/families_2004,
+         `2011-2018`=lico_2018/families_2018-lico_2011/families_2011)
+
+head(meta)
+```
+
+## Mapping the Graph
+
+```{r}
+low_income_pivoted <- low_income %>% pivot_longer(starts_with("20"))
+
+low_income_pivoted %>% sf::st_sf() %>%
+  ggplot(aes(fill=value)) + facet_wrap("name") +
+  geom_sf(size=0.1) + scale_fill_gradient2(labels=scales::percent) +
+  coord_sf(datum=NA,xlim=c(-123.25,-122.8),ylim=c(49.1,49.35)) +
+  labs(title="Change in share of families in low income 2004-2018", fill=NULL,
+       caption="T1FF F-20 family file")
 ```
 
 ## Example on your Own

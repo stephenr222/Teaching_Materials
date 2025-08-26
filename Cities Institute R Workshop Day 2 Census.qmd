@@ -1,0 +1,385 @@
+---
+title: "Cities Institute R Workshop Day 2 - Census"
+author: "Stephen Rouse"
+format: revealjs
+editor: visual
+self-contained: true
+fontsize: 18pt
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+---
+
+## Census Data & the CanCensus Package
+
+Census data is central in situating analysis, whether we want to make use of census data directly, mix it with our own data or just use it to calibrate external data we have.
+
+In this workshop we'll explore how to work with census data and use it in conjunction with our own data.
+
+## Census Data
+
+Census data offers rich variables at high spatial resolution, but at coarse time intervals.
+
+Richer data comes at a price: Data discovery and acquisition is more complex. Enter [CensusMapper](https://censusmapper.ca).
+
+CensusMapper is a flexible census data mapping platform. Anyone can explore and map census data.
+
+CensusMapper is also an API server to facilitate data acquisition for analysis, as a [GUI data selection tool](https://censusmapper.ca/api).
+
+## CanCensus Package
+
+:::::: columns
+:::: {.column width="50%"}
+::: columns
+The cancensus R package interfaces with the CensusMapper API server. It can be queried for:
+
+-   census geographies
+
+-   census data
+
+-   hierarchical metadata of census variables
+
+-   some non-census data that comes on census geographies, e.g. T1FF taxfiler data
+:::
+::::
+
+::: {.column width="50%"}
+![](https://raw.githubusercontent.com/mountainMath/cancensus/master/images/cancensus-sticker.png){width="40%"}
+:::
+::::::
+
+## Setting up API Key
+
+A slight complication, the [`cancensus` package](https://mountainmath.github.io/cancensus/) needs an API key. You can sign up for one on [CensusMapper](https://censusmapper.ca/users/sign_up), and install it using the `set_api_key` function with the `install=TRUE` option so it's always available and won't expose your API key when sharing code.
+
+```{r}
+# new_packages <- c("cancensus","tongfen")
+# install.packages(new_packages)
+library(tidyverse)
+library(cansim)
+library(cancensus)
+library(tongfen)
+
+#cancensus::set_api_key("<your own API key>", install = TRUE) 
+#show_cancensus_api_key()
+```
+
+This code is commented-out for now because you only need to run it once. When you get your API key, place it above and run that section of code without the \# sign. It should look something like this:
+
+![](images/installing_api_key.png)
+
+This will install the API key as a system variable in your `.Renviron` so that it's available in every R session and you won't expose your API key when sharing code.
+
+## Setting up the Cache
+
+This step will store any census data you grab locally, so that you don't have to keep re-downloading it every time. It's really helpful for speeding up code when you're working with bigger tables, especially ones that you use often.
+
+```{r}
+#set_cancensus_cache_path("~/Econ/Cancensus Cache",install=TRUE)
+show_cancensus_cache_path()
+```
+
+You'll see a `use_cache` argument in most of the functions we use next. That determines whether or not the code uses the data from your local cache or not. It's set to TRUE by default, so it uses the data already stored on your computer if it's already there.
+
+To force **cancensus** to refresh the data and re-download it from StatCan, you can specify `use_cache = FALSE` as a parameter for the functions we'll learn about next.
+
+## Testing it out
+
+-   **cancensus** provides three different functions for retrieving Census data:
+
+    ::::: columns
+    ::: {.column width="50%"}
+    -   `get_census_data` to retrieve Census data only as a flat data frame
+
+    ```{r}
+    census_data <- get_census(dataset='CA21', regions=list(CMA="48835"), vectors=c("v_CA21_434"), level='CSD', use_cache = FALSE, geo_format = NA, quiet = TRUE)
+
+    summary(census_data)
+    ```
+    :::
+
+    ::: {.column width="50%"}
+    -   `get_census_geometry` to retrieve Census geography only as a collection of spatial polygons
+
+    ```{r}
+    census_data <- get_census(dataset='CA21', regions=list(CMA="48835"),
+                              vectors=c("v_CA21_434"),
+                              level='CSD', use_cache = FALSE, geo_format = 'sf', quiet = TRUE)
+    summary(census_data)
+    ```
+    :::
+    :::::
+
+## Testing it out
+
+`get_census`  is used to retrieve Census data and geography as a spatial dataset together
+
+```{r}
+census_data <- get_census(dataset='CA21', regions=list(CMA="48835"),
+                          vectors=c("v_CA21_434"),
+                          level='CSD', use_cache = FALSE, geo_format = 'sp', quiet = TRUE)
+
+head(census_data) %>% knitr::kable()
+```
+
+## Census Datasets
+
+**Cancensus** can access Statistics Canada Census data for Census years 1996, 2001, 2006, 2011, 2016, and 2021. You can run `list_census_datasets` to check what datasets are currently available for access through the CensusMapper API.
+
+```{r}
+list_census_datasets() 
+```
+
+## Census Regions
+
+Census data is aggregated at multiple geographic levels. Census geographies at the national (C), provincial (PR), census metropolitan area (CMA), census agglomeration (CA), census division (CD), and census subdivision (CSD) are defined as named census regions.
+
+Canadian Census geography can change in between Census periods. **Cancensus** provides a function, `list_census_regions(dataset)`, to display all named census regions and their corresponding id for a given census dataset.
+
+```{r}
+list_census_regions("CA21")
+```
+
+## Revisiting the code for Edmonton
+
+```{r}
+list_census_regions('CA21') %>% filter(level=="CMA", name=="Edmonton")
+
+census_data <- get_census(dataset='CA21', regions=list(CMA="48835"),
+                          vectors="v_CA21_434",
+                          level='CSD', use_cache = FALSE, quiet = TRUE)
+```
+
+This is how we got to the function from above. To grab the same data for Edmonton, broken down into a smaller geographic level, we can slightly modify the `level=` argument.
+
+```{r}
+census_data <- get_census(dataset='CA21', regions=list(CMA="48835"),
+                          vectors="v_CA21_434",
+                          level='CT', use_cache = FALSE, quiet = TRUE)
+```
+
+## Working with Census Variables
+
+Census data contains thousands of different geographic regions as well as thousands of unique variables. In addition to enabling programmatic and reproducible access to Census data, **cancensus** has a number of tools to help users find the data they are looking for.
+
+You can run the following code to view all available Census variables for a given dataset:
+
+```{r}
+list_census_vectors("CA21")
+```
+
+## Working with Census Variables
+
+For each variable (vector) in that Census dataset, this shows:
+
+-   Vector: short variable code
+
+-   Type: variables are provided as aggregates of female responses, male responses, or total (male+female) responses
+
+-   Label: detailed variable name
+
+-   Units: provides information about whether the variable represents a count integer, a ratio, a percentage, or a currency figure
+
+-   Parent_vector: shows the immediate hierarchical parent category for that variable, where appropriate
+
+-   Aggregation: indicates how the variable should be aggregated with others, whether it is additive or if it is an average of another variable
+
+-   Description: a rough description of a variable based on its hierarchical structure. This is constructed by **cancensus** by recursively traversing the labels for every variable’s hierarchy, and facilitates searching for specific variables using key terms
+
+## Finding Variables to Work With
+
+As you can tell, it's pretty hard to find a dataset on your own just by browsing that list. Cancensus uses the `find_census_vectors()` function to help with that.
+
+::::: columns
+::: {.column width="50%"}
+```{r}
+find_census_vectors("Australia",dataset="CA21",type="total",query_type="exact") 
+
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+find_census_vectors("Australia origin",dataset="CA21",type="total",query_type="semantic") 
+
+```
+:::
+:::::
+
+The "exact" search is very precise, but you can miss out on key tables if you don't know *exactly* what you're looking for.
+
+## Finding Variables to Work With
+
+One other search option is "keyword", which looks for the highest number of matches. It also has an interactive option that you can play around with:
+
+```{r}
+find_census_vectors("Australian ethnic", dataset = "CA21", type = "total", query_type = "keyword", interactive = FALSE)
+```
+
+## Looking at Poverty in Edmonton 
+
+```{r}
+#list_census_regions('CA21') %>% filter(level=="CMA", name=="Edmonton")
+
+find_census_vectors("Low Income Measures",dataset="CA21",type="total",query_type="semantic")  %>% knitr::kable()
+```
+
+## Mapping the Data
+
+```{r}
+pv <- c(lico_at="v_CA21_1028")
+poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT") 
+ggplot(poverty_data,aes(fill=lico_at)) +
+  geom_sf(size=NA) +  
+  labs(title="Number of children in poverty - Edmonton",fill=NULL,caption="StatCan Census 2021")
+```
+
+## Looking at Poverty (%)
+
+```{r}
+find_census_vectors("Low Income Measures %",dataset="CA21",type="total",query_type="semantic")  %>% knitr::kable()
+
+```
+
+## Mapping the Data
+
+```{r}
+pv <- c(lico_at="v_CA21_1043")
+poverty_data <- get_census("CA21", regions=list(CMA="48835"), vectors=pv, geo_format="sf", level="CT") 
+ggplot(poverty_data,aes(fill=lico_at/100)) +
+  geom_sf(size=NA) +  
+  labs(title="Share of children in poverty - Edmonton",fill=NULL,caption="StatCan Census 2021")
+```
+
+## Adapting for another Region
+
+```{r}
+list_census_regions('CA21') %>% filter(level=="CMA", name=="Vancouver")
+```
+
+```{r}
+poverty_data <- get_census("CA21", regions=list(CMA="59933"), vectors=pv, geo_format="sf", level="CT") 
+ggplot(poverty_data,aes(fill=lico_at/100)) +
+  geom_sf(size=NA) +  
+  labs(title="% of children in poverty - Vancouver",fill=NULL,caption="StatCan Census 2021")
+```
+
+## Re-mapping with a Different Theme
+
+If we want to add different themes to the graph, there are a lot of options to choose from:
+
+```{r}
+poverty_data <- get_census("CA21", regions=list(CMA="59933"), vectors=pv, geo_format="sf", level="CT") 
+ggplot(poverty_data,aes(fill=lico_at/100)) +
+  geom_sf(size=NA) +  
+  labs(title="% of children in poverty - Vancouver",fill=NULL,caption="StatCan Census 2021") +scale_fill_viridis_c(option = "inferno",,labels=scales::percent)
+```
+
+# Mixing data sources
+
+Mixing data sources is hard, especially when dealing with spatial data.
+
+If spatial units match across datasets, it is easy to compare the other data we have. If spatial units don't match, things get complicated. And annoying.
+
+Simple example is LFS time series for CMAs. We don't have one long time series but several partially overlapping shorter time series. The reason is that CMA geography changes over time, so we can't directly compare data when geography (denominators) change.
+
+## Mixing Data when Spatial Units Match
+
+The **cansim** package returns a geographic identifier `GeoUID` that matches census identifiers returned by **cancensus**. That makes matching data from those two data sources relatively easy.
+
+We'll try out an example here with an Income Distribution measure from StatCan:
+
+```{r}
+income_distribution <- get_cansim("11-10-0074") %>% select(GeoUID,`D-index`=VALUE)
+
+toronto <- get_census("CA16",regions=list(CMA="35535"),geo_format = 'sf',level="CT")
+  
+merged_data <- left_join(toronto,income_distribution, by="GeoUID") 
+
+merged_data %>%
+  ggplot(aes(fill=`D-index`)) +
+  geom_sf(size=0.1) + scale_fill_viridis_c() +
+  coord_sf(datum=NA,xlim=c(-79.8,-79.15),ylim=c(43.6,43.8)) +
+  labs(title="Income divergence index", caption="StatCan table 11-10-0074")
+```
+
+## Mixing Census Data Across Years
+
+Census geographies often change over time, which complicates comparisons using more than one year of data.
+
+The best way to deal with this is a custom data request, but that takes time, costs money and is overkill for many applications. An immediate way to achieve almost the same result is using the **tongfen** package.
+
+Tongfen ensures that while the spatial units change, they are still *comparable*. In other words, they're derived from one another by a (generally short) series of split and join operations.
+
+## Tongfen & CensusMapper
+
+With this example, we'll take a look at how the number of children in Toronto has changed over time. We'll use the CensusMapper API GUI to select the Census vectors that we need. We'll get data on the children under 15, assembled from 5 year age groups for males and females for 2001 and 2021.
+
+```{r}
+search_census_regions("Toronto","CA21")
+
+# "meta" vectors for Tongfen are the Census vectors that we need to compare over time
+meta <- meta_for_ca_census_vectors(c(children_2021="v_CA21_11",
+                                     children1m_2001="v_CA01_7",
+                                     children2m_2001="v_CA01_8",
+                                     children3m_2001="v_CA01_9",
+                                     children1f_2001="v_CA01_26",
+                                     children2f_2001="v_CA01_27",
+                                     children3f_2001="v_CA01_28"))
+
+```
+
+```{r}
+toronto_children <- get_tongfen_ca_census(regions=list(CSD="3520005"), meta=meta, level = "CT", na.rm = TRUE)
+```
+
+## Preparing the Data
+
+Since the data from the 2001 Census is separated by 5 year age groups instead of 15, we'll need to add them up to compare them with the 2021 Census Data.
+
+```{r}
+plot_data <- toronto_children %>%
+  mutate(children_2001=children1m_2001+children2m_2001+children3m_2001+
+           children1f_2001+children2f_2001+children3f_2001) |>
+  select(matches("children_\\d{4}|Population")) 
+```
+
+This fancy code at the end gets rid of all the exrtra columns we had, since the original table was pretty clunky. The first part of the `matches()` function here is keeping *only* columns that start with "children\_" and have exactly 4 numbers at the end (e.g. - children_2021). The second part keeps the columns that have "Population" in their name.
+
+## Analysis & Visualization
+
+```{r}
+ggplot(plot_data, aes(fill=children_2021-children_2001)) +
+  geom_sf() +
+  scale_fill_gradient2(labels=scales::comma) +
+  coord_sf(datum=NA) +
+  labs(title="City of Toronto change in number of children under 15 between 2001 to 2021",
+       fill="Number of\nchildren",
+       caption="StatCan Census 2001, 2021")
+```
+
+## Mapping it again Differently
+
+```{r}
+ggplot(plot_data, aes(fill=children_2021/Population_CA21-children_2001/Population_CA01)) +
+  geom_sf() +
+  scale_fill_gradient2(labels=scales::percent) +
+  coord_sf(datum=NA) +
+  labs(title="City of Toronto change in share of children under 15 between 2001 to 2021",
+       fill="Percentage\npoint\nchange",
+       caption="StatCan Census 2001, 2021")
+```
+
+## Example on your Own
+
+Now that we've gone through a lot of examples, we'll have you all try out one on your own. In the meantime, I'll show you through the steps again (if you need it) and answer any questions you have. Here's the goal:
+
+1.  Find one Census Year & Vector that you want to analyze. Either with the CensusMapper in the browser, or with the `find_census_vectors()` function.
+
+2.  Pick a geography you'll want to map. You can again use CensusMapper to grab the GeoID in the browser, or you can use the `list_census_regions()` function here in R.
+
+3.  Map the data. Choose the level of geographic detail you want with the `level="CT/CMA/etc."` code.
+
+4.  Good luck!
